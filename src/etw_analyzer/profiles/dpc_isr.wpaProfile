@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WpaProfileContainer xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="2" xmlns="http://tempuri.org/SerializableElement.xsd">
+  <Content xsi:type="WpaProfile2">
+    <AllTables>
+      <TableConfiguration Name="DPC/ISR" Layout="GraphAndTable">
+        <Columns>
+          <Column Name="Type" Width="60" />
+          <Column Name="Module" Width="150" />
+          <Column Name="Function" Width="200" />
+          <Column Name="CPU" Width="50" />
+          <Column Name="Duration (us)" Width="120" SortOrder="Descending" SortPriority="0" />
+          <Column Name="Count" Width="80" AggregationMode="Sum" />
+          <Column Name="TimeStamp" Width="100" />
+        </Columns>
+      </TableConfiguration>
+    </AllTables>
+  </Content>
+</WpaProfileContainer>

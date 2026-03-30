@@ -1,0 +1,24 @@
+"""ETW Trace Analyzer MCP Server.
+
+Provides tools for analyzing ETW traces (.etl files).
+Uses xperf.exe to extract data and pandas for aggregation.
+"""
+
+from etw_analyzer.app import mcp  # noqa: F401 — re-export for backward compat
+
+# Register all tool modules — each module calls @mcp.tool() on import
+import etw_analyzer.tools.trace_mgmt  # noqa: F401, E402
+import etw_analyzer.tools.cpu_sampling  # noqa: F401, E402
+import etw_analyzer.tools.stack_analysis  # noqa: F401, E402
+import etw_analyzer.tools.dpc_isr  # noqa: F401, E402
+import etw_analyzer.tools.context_switch  # noqa: F401, E402
+import etw_analyzer.tools.per_cpu  # noqa: F401, E402
+import etw_analyzer.tools.memory  # noqa: F401, E402
+
+
+def main():
+    mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()
