@@ -24,8 +24,12 @@ def _get_dpc_df() -> pd.DataFrame:
                 return df.copy()
 
     raise ValueError(
-        "No DPC/ISR data available. Ensure the trace was collected with "
-        "CpuCswitchSample or CpuSample WPR profile (includes DPC/ISR recording)."
+        "No DPC/ISR data available. The trace was likely collected with "
+        "`wpr -start CPU` which only captures CPU sampling, not DPC/ISR events.\n\n"
+        "To capture DPC/ISR data, use a profile that includes DPC/ISR recording:\n"
+        "  wpr -start GeneralProfile    (includes DPC/ISR + context switches)\n"
+        "  wpr -start CPU -start DPC    (CPU sampling + DPC events)\n\n"
+        "Or use a custom .wprp profile with the DPC/ISR kernel flag enabled."
     )
 
 

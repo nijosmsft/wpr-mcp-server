@@ -44,8 +44,11 @@ def _get_cswitch_df(
     )
     if df.empty:
         raise ValueError(
-            "No ReadyThread data found. Ensure the trace was collected with "
-            "CpuCswitchSample WPR profile (includes CSwitch + ReadyThread stacks)."
+            "No ReadyThread data found. The trace was likely collected with "
+            "`wpr -start CPU` which only captures CPU sampling.\n\n"
+            "To capture context switch and ReadyThread data, use:\n"
+            "  wpr -start GeneralProfile    (includes CSwitch + ReadyThread)\n\n"
+            "ReadyThread stacks are needed for lock contention analysis."
         )
 
     # Cache for future calls

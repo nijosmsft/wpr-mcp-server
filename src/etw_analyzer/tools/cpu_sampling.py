@@ -46,8 +46,10 @@ def _get_sampling_df() -> pd.DataFrame:
         return trace.raw_csv[first_key].copy()
 
     raise ValueError(
-        "No CPU sampling data available. Ensure the trace was collected with "
-        "CpuCswitchSample or CpuSample WPR profile."
+        "No CPU sampling data available. The trace may not contain CPU sampling events.\n\n"
+        "To capture CPU sampling data, use:\n"
+        "  wpr -start CPU              (CPU sampling only)\n"
+        "  wpr -start GeneralProfile   (CPU + context switches + DPC/ISR)"
     )
 
 
