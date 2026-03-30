@@ -190,6 +190,16 @@ Multiple paths can be combined with semicolons. Add local PDB directories for yo
 _NT_SYMBOL_PATH=srv*C:\symbols*https://msdl.microsoft.com/download/symbols;C:\myproject\build\bin
 ```
 
+## Development
+
+### Running Tests
+
+```powershell
+uv run --group dev pytest tests/ -v
+```
+
+Tests use synthetic data and don't require `xperf.exe` or ETL trace files.
+
 ## Contributing
 
 Contributions welcome. Please open an issue first to discuss what you'd like to change.
