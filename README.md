@@ -14,31 +14,23 @@ Works with any Windows performance trace: networking (tcpip.sys, NDIS, NIC drive
 - **Symbol resolution** — automatic PDB download from symbol servers
 - **Call stacks** — butterfly stacks with caller/callee relationships
 
-## Prerequisites
-
-- **Windows** — this server uses Windows-only tools (`xperf.exe`)
-- **[Windows Performance Toolkit](https://learn.microsoft.com/en-us/windows-hardware/test/wpt/)** — part of the Windows SDK or ADK:
-  ```powershell
-  winget install Microsoft.WindowsSDK
-  ```
-- **[uv](https://docs.astral.sh/uv/)** — Python package manager:
-  ```powershell
-  winget install astral-sh.uv
-  ```
-
 ## Installation
 
+**Windows only** — this server requires `xperf.exe` which is a Windows-only tool.
+
 ```powershell
-# 1. Install uv (Python package manager) — skip if already installed
-winget install astral-sh.uv
+# 1. Install prerequisites — skip any you already have
+winget install astral-sh.uv              # Python package manager
+winget install Microsoft.WindowsSDK      # Includes xperf.exe (Windows Performance Toolkit)
 
 # 2. Clone and verify
 git clone https://github.com/nijosmsft/wpr-mcp-server.git
 cd wpr-mcp-server
-uv run python -m etw_analyzer.server  # verify it starts (Ctrl+C to stop)
+uv run python -m etw_analyzer.server     # verify it starts (Ctrl+C to stop)
 ```
 
-`uv` automatically downloads Python, creates a virtual environment, and installs all dependencies on first run. No separate Python install needed.
+- **uv** automatically downloads Python, creates a virtual environment, and installs all dependencies on first run. No separate Python install needed.
+- **xperf.exe** is installed as part of the Windows Performance Toolkit (included in the Windows SDK). Expected location: `C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\xperf.exe`
 
 ## Setup
 
