@@ -29,12 +29,16 @@ Works with any Windows performance trace: networking (tcpip.sys, NDIS, NIC drive
 ## Installation
 
 ```powershell
+# 1. Install uv (Python package manager) — skip if already installed
+winget install astral-sh.uv
+
+# 2. Clone and verify
 git clone https://github.com/nijosmsft/wpr-mcp-server.git
 cd wpr-mcp-server
 uv run python -m etw_analyzer.server  # verify it starts (Ctrl+C to stop)
 ```
 
-That's it — `uv` automatically creates a virtual environment and installs all dependencies on first run.
+`uv` automatically downloads Python, creates a virtual environment, and installs all dependencies on first run. No separate Python install needed.
 
 ## Setup
 
