@@ -26,7 +26,19 @@ Works with any Windows performance trace: networking (tcpip.sys, NDIS, NIC drive
   winget install astral-sh.uv
   ```
 
+## Installation
+
+```powershell
+git clone https://github.com/nijosmsft/wpr-mcp-server.git
+cd wpr-mcp-server
+uv run python -m etw_analyzer.server  # verify it starts (Ctrl+C to stop)
+```
+
+That's it — `uv` automatically creates a virtual environment and installs all dependencies on first run.
+
 ## Setup
+
+Configure your AI assistant to use the server:
 
 ### Claude Code
 
