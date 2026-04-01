@@ -16,8 +16,11 @@ class TraceData:
     export_dir: Path
     symbol_path: str | None = None
 
-    # Raw CSV DataFrames keyed by profile name
+    # Parsed DataFrames keyed by profile name
     raw_csv: dict[str, pd.DataFrame] = field(default_factory=dict)
+
+    # Cached per-CPU sampling data (from xperf -a dumper, parsed once on first per-CPU query)
+    dumper_df: pd.DataFrame | None = None
 
     # Metadata
     duration_seconds: float | None = None

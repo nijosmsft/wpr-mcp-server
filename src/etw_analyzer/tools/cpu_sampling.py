@@ -67,27 +67,53 @@ def _get_per_cpu_sampling_df(
     start_time: float | None = None,
     end_time: float | None = None,
 ) -> pd.DataFrame:
-    """Get per-CPU sampling data by parsing raw SampledProfile events via xperf dumper.
+    """Get per-CPU sampling data from cached dumper output.
 
-    This is slower than the aggregated profile -detail data but provides per-CPU
-    breakdown that the aggregated data lacks.
+    On first call, runs xperf -a dumper to parse ALL SampledProfile events
+    (all CPUs) and caches the result. Subsequent calls filter in-memory.
+    Also persists the cache as parquet for fast reload across sessions.
     """
     trace = require_trace()
 
-    # Parse CPU filter into a set for efficient filtering
+    # Load or populate the dumper cache
+    if trace.dumper_df is None:
+        # Try loading from persisted parquet first
+        parquet_path = trace.export_dir / "sampled_profile.parquet"
+        if parquet_path.exists():
+            trace.dumper_df = pd.read_parquet(parquet_path)
+        else:
+            # Parse all events (no CPU filter) and cache
+            from etw_analyzer.parsing.wpa_exporter import parse_sampled_profile_events
+
+            trace.dumper_df = parse_sampled_profile_events(
+                etl_path=trace.etl_path,
+                symbol_path=trace.symbol_path,
+                cpu_filter=None,  # Parse ALL CPUs
+                start_time=None,
+                end_time=None,
+                timeout_seconds=300,
+            )
+
+            # Persist for future sessions
+            if not trace.dumper_df.empty:
+                trace.export_dir.mkdir(parents=True, exist_ok=True)
+                trace.dumper_df.to_parquet(parquet_path, index=False)
+
+    if trace.dumper_df.empty:
+        return pd.DataFrame()
+
+    # Filter in-memory by CPU and time range
+    df = trace.dumper_df
     cpu_list = parse_cpu_filter(cpu_filter)
-    cpu_set = set(cpu_list) if cpu_list else None
+    if cpu_list:
+        df = df[df["CPU"].isin(cpu_list)]
 
-    from etw_analyzer.parsing.wpa_exporter import parse_sampled_profile_events
+    if start_time is not None:
+        df = df[df["TimeStamp"] >= start_time * 1_000_000]
+    if end_time is not None:
+        df = df[df["TimeStamp"] <= end_time * 1_000_000]
 
-    return parse_sampled_profile_events(
-        etl_path=trace.etl_path,
-        symbol_path=trace.symbol_path,
-        cpu_filter=cpu_set,
-        start_time=start_time,
-        end_time=end_time,
-        timeout_seconds=300,
-    )
+    return df.copy()
 
 
 @mcp.tool()

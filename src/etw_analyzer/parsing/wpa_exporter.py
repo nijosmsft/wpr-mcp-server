@@ -677,6 +677,132 @@ def _parse_pool(text: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _save_df(df: pd.DataFrame, output_dir: Path, name: str) -> Path:
+    """Save a DataFrame as parquet (fast binary format)."""
+    path = output_dir / f"{name}.parquet"
+    df.to_parquet(path, index=False)
+    return path
+
+
+def _export_cpu_sampling(
+    etl_path: Path, output_dir: Path, symbol_path: str | None, timeout: int,
+) -> dict[str, Path]:
+    """Export CPU sampling via xperf -a profile -detail."""
+    results: dict[str, Path] = {}
+    try:
+        text = _run_xperf(
+            etl_path, "profile", ["-detail"],
+            symbol_path=symbol_path, symbols=True, timeout_seconds=timeout,
+        )
+        df = _parse_profile_detail(text)
+        if not df.empty:
+            results["cpu_sampling"] = _save_df(df, output_dir, "cpu_sampling")
+            (output_dir / "profile-detail.txt").write_text(text, encoding="utf-8")
+    except Exception as e:
+        (output_dir / "cpu_sampling_error.txt").write_text(str(e))
+    return results
+
+
+def _export_cpu_timeline(
+    etl_path: Path, output_dir: Path, symbol_path: str | None, timeout: int,
+) -> dict[str, Path]:
+    """Export per-CPU utilization via xperf -a profile."""
+    results: dict[str, Path] = {}
+    try:
+        text = _run_xperf(
+            etl_path, "profile", [],
+            symbol_path=symbol_path, symbols=False, timeout_seconds=timeout,
+        )
+        df = _parse_profile_utilization(text)
+        if not df.empty:
+            results["cpu_timeline"] = _save_df(df, output_dir, "cpu_timeline")
+    except Exception:
+        pass
+    return results
+
+
+def _export_dpcisr(
+    etl_path: Path, output_dir: Path, symbol_path: str | None, timeout: int,
+) -> dict[str, Path]:
+    """Export DPC/ISR histograms via xperf -a dpcisr."""
+    results: dict[str, Path] = {}
+    try:
+        text = _run_xperf(
+            etl_path, "dpcisr", [],
+            symbol_path=symbol_path, symbols=False, timeout_seconds=timeout,
+        )
+        df = _parse_dpcisr(text)
+        if not df.empty:
+            results["dpc_isr"] = _save_df(df, output_dir, "dpc_isr")
+        raw_path = output_dir / "dpcisr.txt"
+        raw_path.write_text(text, encoding="utf-8")
+        results["dpc_isr_raw"] = raw_path
+    except Exception as e:
+        (output_dir / "dpc_isr_error.txt").write_text(str(e))
+    return results
+
+
+def _export_cswitch(
+    etl_path: Path, output_dir: Path, symbol_path: str | None, timeout: int,
+) -> dict[str, Path]:
+    """Export context switch data via xperf -a cswitch."""
+    results: dict[str, Path] = {}
+    try:
+        text = _run_xperf(
+            etl_path, "cswitch", [],
+            symbol_path=symbol_path, symbols=False, timeout_seconds=timeout,
+        )
+        if text.strip():
+            raw_path = output_dir / "cswitch.txt"
+            raw_path.write_text(text, encoding="utf-8")
+            results["cswitch_raw"] = raw_path
+    except Exception:
+        pass
+    return results
+
+
+def _export_stacks(
+    etl_path: Path, output_dir: Path, symbol_path: str | None, timeout: int,
+) -> dict[str, Path]:
+    """Export call stacks via xperf -a stack -butterfly."""
+    results: dict[str, Path] = {}
+    try:
+        text = _run_xperf(
+            etl_path, "stack", ["-butterfly", "5"],
+            symbol_path=symbol_path, symbols=True, timeout_seconds=timeout,
+        )
+        if text.strip():
+            (output_dir / "stack-butterfly.html").write_text(text, encoding="utf-8")
+            df = _parse_stack_butterfly_html(text)
+            if not df.empty:
+                results["stacks"] = _save_df(df, output_dir, "stacks")
+            callers_df = parse_stack_butterfly_callers(text)
+            if not callers_df.empty:
+                results["stacks_callers"] = _save_df(callers_df, output_dir, "stacks_callers")
+    except Exception as e:
+        (output_dir / "stacks_error.txt").write_text(str(e))
+    return results
+
+
+def _export_tracestats(
+    etl_path: Path, output_dir: Path, symbol_path: str | None, timeout: int,
+) -> dict[str, Path]:
+    """Export trace metadata via xperf -a tracestats."""
+    results: dict[str, Path] = {}
+    try:
+        text = _run_xperf(
+            etl_path, "tracestats", [],
+            symbol_path=symbol_path, symbols=False, timeout_seconds=60,
+        )
+        if text.strip():
+            raw_path = output_dir / "tracestats.txt"
+            raw_path.write_text(text, encoding="utf-8")
+            results["tracestats"] = raw_path
+    except Exception:
+        pass
+    return results
+
+
 def export_all_profiles(
     etl_path: Path,
     output_dir: Path,
@@ -685,11 +811,14 @@ def export_all_profiles(
 ) -> dict[str, Path]:
     """Export all data from an ETL trace using xperf.
 
-    Runs xperf with multiple actions and saves parsed CSV files.
+    Runs xperf actions in parallel and saves parsed data as parquet files.
+    Raw text outputs (dpcisr, cswitch, tracestats) are saved as .txt.
 
     Returns:
-        Dict of dataset_name → CSV path.
+        Dict of dataset_name → file path (.parquet or .txt).
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     xperf = find_xperf()
     if xperf is None:
         raise FileNotFoundError(
@@ -700,120 +829,28 @@ def export_all_profiles(
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Run all xperf actions in parallel (they are independent subprocesses)
+    export_fns = [
+        _export_cpu_sampling,
+        _export_cpu_timeline,
+        _export_dpcisr,
+        _export_cswitch,
+        _export_stacks,
+        _export_tracestats,
+    ]
+
     results: dict[str, Path] = {}
-
-    # 1. CPU sampling with symbol resolution (profile -detail)
-    try:
-        text = _run_xperf(
-            etl_path, "profile", ["-detail"],
-            symbol_path=symbol_path,
-            symbols=True,
-            timeout_seconds=timeout_seconds,
-        )
-        df = _parse_profile_detail(text)
-        if not df.empty:
-            csv_path = output_dir / "cpu_sampling.csv"
-            df.to_csv(csv_path, index=False)
-            results["cpu_sampling"] = csv_path
-
-            # Also save raw text for reference
-            raw_path = output_dir / "profile-detail.txt"
-            raw_path.write_text(text, encoding="utf-8")
-    except Exception as e:
-        # Save error but continue with other exports
-        (output_dir / "cpu_sampling_error.txt").write_text(str(e))
-
-    # 2. CPU utilization timeline (profile without -detail)
-    try:
-        text = _run_xperf(
-            etl_path, "profile", [],
-            symbol_path=symbol_path,
-            symbols=False,
-            timeout_seconds=timeout_seconds,
-        )
-        df = _parse_profile_utilization(text)
-        if not df.empty:
-            csv_path = output_dir / "cpu_timeline.csv"
-            df.to_csv(csv_path, index=False)
-            results["cpu_timeline"] = csv_path
-    except Exception:
-        pass
-
-    # 3. DPC/ISR statistics
-    try:
-        text = _run_xperf(
-            etl_path, "dpcisr", [],
-            symbol_path=symbol_path,
-            symbols=False,
-            timeout_seconds=timeout_seconds,
-        )
-        df = _parse_dpcisr(text)
-        if not df.empty:
-            csv_path = output_dir / "dpc_isr.csv"
-            df.to_csv(csv_path, index=False)
-            results["dpc_isr"] = csv_path
-
-        # Save raw text — dpcisr output has rich detail
-        raw_path = output_dir / "dpcisr.txt"
-        raw_path.write_text(text, encoding="utf-8")
-        results["dpc_isr_raw"] = raw_path
-    except Exception as e:
-        (output_dir / "dpc_isr_error.txt").write_text(str(e))
-
-    # 4. Context switch / ready thread data
-    try:
-        text = _run_xperf(
-            etl_path, "cswitch", [],
-            symbol_path=symbol_path,
-            symbols=False,
-            timeout_seconds=timeout_seconds,
-        )
-        if text.strip():
-            raw_path = output_dir / "cswitch.txt"
-            raw_path.write_text(text, encoding="utf-8")
-            results["cswitch_raw"] = raw_path
-    except Exception:
-        pass
-
-    # 5. Stack butterfly (HTML → parsed to CSV)
-    try:
-        text = _run_xperf(
-            etl_path, "stack", ["-butterfly", "5"],
-            symbol_path=symbol_path,
-            symbols=True,
-            timeout_seconds=timeout_seconds,
-        )
-        if text.strip():
-            raw_path = output_dir / "stack-butterfly.html"
-            raw_path.write_text(text, encoding="utf-8")
-
-            df = _parse_stack_butterfly_html(text)
-            if not df.empty:
-                csv_path = output_dir / "stacks.csv"
-                df.to_csv(csv_path, index=False)
-                results["stacks"] = csv_path
-
-            callers_df = parse_stack_butterfly_callers(text)
-            if not callers_df.empty:
-                csv_path = output_dir / "stacks_callers.csv"
-                callers_df.to_csv(csv_path, index=False)
-                results["stacks_callers"] = csv_path
-    except Exception as e:
-        (output_dir / "stacks_error.txt").write_text(str(e))
-
-    # 6. Trace stats (metadata)
-    try:
-        text = _run_xperf(
-            etl_path, "tracestats", [],
-            symbol_path=symbol_path,
-            symbols=False,
-            timeout_seconds=60,
-        )
-        if text.strip():
-            raw_path = output_dir / "tracestats.txt"
-            raw_path.write_text(text, encoding="utf-8")
-            results["tracestats"] = raw_path
-    except Exception:
-        pass
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(fn, etl_path, output_dir, symbol_path, timeout_seconds): fn.__name__
+            for fn in export_fns
+        }
+        for future in as_completed(futures):
+            try:
+                partial = future.result()
+                results.update(partial)
+            except Exception:
+                pass  # Individual export errors are handled inside each function
 
     return results

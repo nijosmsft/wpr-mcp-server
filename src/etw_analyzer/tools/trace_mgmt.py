@@ -89,6 +89,20 @@ def load_trace(
             "Expected at: C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\xperf.exe"
         )
 
+    # Check if we can skip re-export (cached parquet/csv files exist and are newer than ETL)
+    cached = _load_from_cache(export_dir, path)
+    if cached is not None:
+        trace = TraceData(
+            etl_path=path,
+            export_dir=export_dir,
+            symbol_path=sym_path,
+            raw_csv=cached,
+        )
+        _populate_metadata(trace)
+        set_trace(trace)
+        summary = _format_load_summary(trace)
+        return summary.replace("**Trace loaded:**", "**Trace loaded (from cache):**")
+
     # Build symcache first to ensure symbols are available for export
     from etw_analyzer.parsing.wpa_exporter import _run_xperf
     try:
@@ -101,12 +115,12 @@ def load_trace(
     except Exception:
         pass  # Non-fatal — continue with whatever symbols are available
 
-    # Run exports
+    # Run exports (parallel xperf actions, saves parquet + raw text)
     results: dict[str, pd.DataFrame] = {}
     errors: list[str] = []
 
     try:
-        csv_paths = export_all_profiles(
+        file_paths = export_all_profiles(
             path, export_dir,
             symbol_path=sym_path,
             timeout_seconds=timeout_seconds,
@@ -114,15 +128,9 @@ def load_trace(
     except Exception as e:
         return f"Export failed: {e}"
 
-    for profile_name, csv_path in csv_paths.items():
+    for profile_name, file_path in file_paths.items():
         try:
-            if csv_path.suffix == ".csv":
-                df = load_csv(csv_path)
-                results[profile_name] = df
-            elif csv_path.suffix == ".txt":
-                # Raw text files (dpcisr, cswitch, tracestats) — store as-is
-                # for tools that parse them directly
-                results[profile_name] = pd.DataFrame({"raw_text": [csv_path.read_text(encoding="utf-8")]})
+            results[profile_name] = _load_file(file_path)
         except Exception as e:
             errors.append(f"{profile_name}: {e}")
 
@@ -135,15 +143,11 @@ def load_trace(
                     butterfly_html.read_text(encoding="utf-8")
                 )
                 if not callers_df.empty:
-                    csv_path = export_dir / "stacks_callers.csv"
-                    callers_df.to_csv(csv_path, index=False)
+                    callers_df.to_parquet(export_dir / "stacks_callers.parquet", index=False)
                     results["stacks_callers"] = callers_df
             except Exception as e:
                 errors.append(f"stacks_callers: {e}")
 
-    # Always set trace state — even with no standard datasets,
-    # on-demand tools (like get_memory_pools) can extract data later.
-    # Build trace data
     trace = TraceData(
         etl_path=path,
         export_dir=export_dir,
@@ -152,11 +156,84 @@ def load_trace(
         export_errors=errors,
     )
 
-    # Extract metadata from the data
     _populate_metadata(trace)
     set_trace(trace)
 
     return _format_load_summary(trace)
+
+
+def _load_file(file_path: Path) -> pd.DataFrame:
+    """Load a single exported file (parquet, csv, or raw text)."""
+    if file_path.suffix == ".parquet":
+        return pd.read_parquet(file_path)
+    elif file_path.suffix == ".csv":
+        return load_csv(file_path)
+    elif file_path.suffix in (".txt", ".html"):
+        return pd.DataFrame({"raw_text": [file_path.read_text(encoding="utf-8")]})
+    else:
+        raise ValueError(f"Unknown file type: {file_path.suffix}")
+
+
+# Datasets that are exported as parquet (structured data)
+_PARQUET_DATASETS = ["cpu_sampling", "cpu_timeline", "dpc_isr", "stacks", "stacks_callers"]
+
+# Datasets that are raw text files
+_TEXT_DATASETS = {
+    "dpc_isr_raw": "dpcisr.txt",
+    "cswitch_raw": "cswitch.txt",
+    "tracestats": "tracestats.txt",
+}
+
+
+def _load_from_cache(export_dir: Path, etl_path: Path) -> dict[str, pd.DataFrame] | None:
+    """Try to load previously exported data from the cache directory.
+
+    Returns None if the cache is missing or stale (ETL is newer than cache).
+    """
+    if not export_dir.exists():
+        return None
+
+    # Staleness check: if ETL is newer than export dir, re-export
+    try:
+        etl_mtime = etl_path.stat().st_mtime
+        export_mtime = export_dir.stat().st_mtime
+        if etl_mtime > export_mtime:
+            return None
+    except OSError:
+        return None
+
+    # Need at least cpu_sampling to be useful
+    has_any = False
+    results: dict[str, pd.DataFrame] = {}
+
+    for name in _PARQUET_DATASETS:
+        parquet_path = export_dir / f"{name}.parquet"
+        csv_path = export_dir / f"{name}.csv"  # backward compat
+        if parquet_path.exists():
+            try:
+                results[name] = pd.read_parquet(parquet_path)
+                has_any = True
+            except Exception:
+                pass
+        elif csv_path.exists():
+            try:
+                results[name] = load_csv(csv_path)
+                has_any = True
+            except Exception:
+                pass
+
+    if not has_any:
+        return None
+
+    for key, filename in _TEXT_DATASETS.items():
+        txt_path = export_dir / filename
+        if txt_path.exists():
+            try:
+                results[key] = pd.DataFrame({"raw_text": [txt_path.read_text(encoding="utf-8")]})
+            except Exception:
+                pass
+
+    return results
 
 
 def _populate_metadata(trace: TraceData) -> None:
