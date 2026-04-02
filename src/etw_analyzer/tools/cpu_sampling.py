@@ -127,16 +127,19 @@ def get_cpu_samples(
     end_time: float | None = None,
     max_rows: int = 50,
 ) -> str:
-    """Get CPU sampling data grouped by process, module, or function.
+    """Get CPU sampling data grouped by process, module, function, or cpu.
 
     Shows where CPU time is spent. Use to identify hot modules and functions.
 
     When cpu_filter is specified, extracts per-CPU sampling data from raw
-    SampledProfile events (slower but provides true per-CPU breakdown).
+    SampledProfile events (slower on first call, cached after).
     Without cpu_filter, uses the faster aggregated profile data.
 
+    group_by='cpu' requires cpu_filter to be set (e.g. '0-127') and shows
+    sample counts per CPU — useful for finding which CPUs run a specific process.
+
     Args:
-        group_by: Grouping level — 'process', 'module', 'function', or 'process+module'. Default: 'module'.
+        group_by: Grouping level — 'process', 'module', 'function', 'process+module', or 'cpu'. Default: 'module'.
         cpu_filter: CPU range filter, e.g. '0' or '18-39'. Enables per-CPU extraction.
         module_filter: Filter to specific module (substring match), e.g. 'xdp.sys'.
         process_filter: Filter to specific process, e.g. 'echo_server'.
@@ -191,8 +194,13 @@ def get_cpu_samples(
         "module": [module_col],
         "function": [module_col, function_col],
         "process+module": [process_col, module_col],
+        "cpu": ["CPU"],
+        "cpu+process": ["CPU", process_col],
     }
     group_cols = group_map.get(group_by, [module_col])
+
+    if group_by in ("cpu", "cpu+process") and "CPU" not in df.columns:
+        return "*group_by='cpu' requires cpu_filter to be set (e.g. cpu_filter='0-127').*"
     group_cols = [c for c in group_cols if c in df.columns]
 
     if not group_cols:
