@@ -803,6 +803,63 @@ def _export_tracestats(
     return results
 
 
+def _export_sysconfig(
+    etl_path: Path, output_dir: Path, symbol_path: str | None, timeout: int,
+) -> dict[str, Path]:
+    """Export system configuration via xperf -a sysconfig."""
+    results: dict[str, Path] = {}
+    try:
+        text = _run_xperf(
+            etl_path, "sysconfig", ["-cpu", "-nic", "-disk", "-memory"],
+            symbol_path=symbol_path, symbols=False, timeout_seconds=60,
+        )
+        if text.strip():
+            raw_path = output_dir / "sysconfig.txt"
+            raw_path.write_text(text, encoding="utf-8")
+            results["sysconfig"] = raw_path
+    except Exception:
+        pass
+    return results
+
+
+def _export_process_info(
+    etl_path: Path, output_dir: Path, symbol_path: str | None, timeout: int,
+) -> dict[str, Path]:
+    """Export process/thread/image info via xperf -a process."""
+    results: dict[str, Path] = {}
+    try:
+        text = _run_xperf(
+            etl_path, "process", ["-withcmdline"],
+            symbol_path=symbol_path, symbols=False, timeout_seconds=60,
+        )
+        if text.strip():
+            raw_path = output_dir / "process_info.txt"
+            raw_path.write_text(text, encoding="utf-8")
+            results["process_info"] = raw_path
+    except Exception:
+        pass
+    return results
+
+
+def _export_diskio(
+    etl_path: Path, output_dir: Path, symbol_path: str | None, timeout: int,
+) -> dict[str, Path]:
+    """Export disk I/O summary via xperf -a diskio."""
+    results: dict[str, Path] = {}
+    try:
+        text = _run_xperf(
+            etl_path, "diskio", ["-summary"],
+            symbol_path=symbol_path, symbols=False, timeout_seconds=60,
+        )
+        if text.strip():
+            raw_path = output_dir / "diskio.txt"
+            raw_path.write_text(text, encoding="utf-8")
+            results["diskio"] = raw_path
+    except Exception:
+        pass
+    return results
+
+
 def export_all_profiles(
     etl_path: Path,
     output_dir: Path,
@@ -838,6 +895,9 @@ def export_all_profiles(
         _export_cswitch,
         _export_stacks,
         _export_tracestats,
+        _export_sysconfig,
+        _export_process_info,
+        _export_diskio,
     ]
 
     results: dict[str, Path] = {}

@@ -56,6 +56,7 @@ def load_trace(
     etl_path: str,
     symbol_path: str | None = None,
     timeout_seconds: int = 300,
+    force: bool = False,
 ) -> str:
     """Load an ETL trace file for analysis.
 
@@ -63,11 +64,15 @@ def load_trace(
     then caches the results in memory. Takes 30-180 seconds depending on
     trace size and symbol resolution.
 
+    If the trace was previously loaded, uses cached data for instant reload.
+    Set force=True to delete the cache and re-export from scratch.
+
     Args:
         etl_path: Full path to the .etl file.
         symbol_path: NT symbol path (e.g. 'srv*C:\\symbols*https://msdl.microsoft.com/download/symbols').
                      If not set, uses _NT_SYMBOL_PATH env var.
         timeout_seconds: Max seconds per xperf invocation. Default: 300.
+        force: Delete cached exports and re-run xperf. Default: False.
     """
     path = Path(etl_path)
     if not path.exists():
@@ -80,6 +85,11 @@ def load_trace(
 
     # Export directory next to the ETL file
     export_dir = path.parent / f".etw-export-{path.stem}"
+
+    # Force re-export: delete cache directory
+    if force and export_dir.exists():
+        import shutil
+        shutil.rmtree(export_dir)
 
     xperf = find_xperf()
     if xperf is None:
@@ -182,6 +192,9 @@ _TEXT_DATASETS = {
     "dpc_isr_raw": "dpcisr.txt",
     "cswitch_raw": "cswitch.txt",
     "tracestats": "tracestats.txt",
+    "sysconfig": "sysconfig.txt",
+    "process_info": "process_info.txt",
+    "diskio": "diskio.txt",
 }
 
 
