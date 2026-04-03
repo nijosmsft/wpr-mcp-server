@@ -15,6 +15,8 @@ import etw_analyzer.tools.context_switch  # noqa: F401, E402
 import etw_analyzer.tools.per_cpu  # noqa: F401, E402
 import etw_analyzer.tools.memory  # noqa: F401, E402
 import etw_analyzer.tools.system_info  # noqa: F401, E402
+import etw_analyzer.tools.compare  # noqa: F401, E402
+import etw_analyzer.tools.summary  # noqa: F401, E402
 
 
 def main():
