@@ -4,6 +4,20 @@ An [MCP](https://modelcontextprotocol.io/) server that lets AI coding assistants
 
 Works with any Windows performance trace: networking (tcpip.sys, NDIS, NIC drivers, HTTP.sys), kernel (DPCs, ISRs, context switches), and application workloads.
 
+### Quick Install
+
+Copy-paste this into Claude Code, Copilot, or any AI assistant to install automatically:
+
+```
+Install the WPR trace analyzer MCP server on this Windows machine:
+1. Run: winget install astral-sh.uv (skip if uv is already installed)
+2. Check if xperf.exe exists at "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\xperf.exe". If not, run: winget install Microsoft.WindowsSDK
+3. Run: git clone https://github.com/nijosmsft/wpr-mcp-server.git C:\tools\wpr-mcp-server
+4. Add this MCP server config to .mcp.json:
+   {"mcpServers":{"wpr-trace-analyzer":{"type":"stdio","command":"uv","args":["run","--directory","C:\\tools\\wpr-mcp-server","python","-m","etw_analyzer.server"],"env":{"_NT_SYMBOL_PATH":"srv*C:\\symbols*https://msdl.microsoft.com/download/symbols"}}}}
+5. Verify: run "uv run --directory C:\tools\wpr-mcp-server python -m etw_analyzer.server" and confirm it starts
+```
+
 ## Features
 
 - **Auto-summary** — one-call comprehensive analysis: system config, per-CPU utilization, hot functions, symbol status, DPC health
@@ -249,20 +263,6 @@ Multiple paths can be combined with semicolons. Add local PDB directories for yo
 
 ```
 _NT_SYMBOL_PATH=srv*C:\symbols*https://msdl.microsoft.com/download/symbols;C:\myproject\build\bin
-```
-
-## Quick Install Prompt
-
-Copy-paste this into Claude Code, Copilot, or any AI assistant to install automatically:
-
-```
-Install the WPR trace analyzer MCP server on this Windows machine:
-1. Run: winget install astral-sh.uv (skip if uv is already installed)
-2. Check if xperf.exe exists at "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\xperf.exe". If not, run: winget install Microsoft.WindowsSDK
-3. Run: git clone https://github.com/nijosmsft/wpr-mcp-server.git C:\tools\wpr-mcp-server
-4. Add this MCP server config to .mcp.json:
-   {"mcpServers":{"wpr-trace-analyzer":{"type":"stdio","command":"uv","args":["run","--directory","C:\\tools\\wpr-mcp-server","python","-m","etw_analyzer.server"],"env":{"_NT_SYMBOL_PATH":"srv*C:\\symbols*https://msdl.microsoft.com/download/symbols"}}}}
-5. Verify: run "uv run --directory C:\tools\wpr-mcp-server python -m etw_analyzer.server" and confirm it starts
 ```
 
 ## Development
