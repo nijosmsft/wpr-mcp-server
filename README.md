@@ -256,13 +256,13 @@ _NT_SYMBOL_PATH=srv*C:\symbols*https://msdl.microsoft.com/download/symbols;C:\my
 Copy-paste this into Claude Code, Copilot, or any AI assistant to install automatically:
 
 ```
-Install the WPR trace analyzer MCP server on this machine:
+Install the WPR trace analyzer MCP server on this Windows machine:
 1. Run: winget install astral-sh.uv (skip if uv is already installed)
-2. Run: git clone https://github.com/nijosmsft/wpr-mcp-server.git C:\tools\wpr-mcp-server
-3. Add this MCP server config to .mcp.json:
+2. Check if xperf.exe exists at "C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\xperf.exe". If not, run: winget install Microsoft.WindowsSDK
+3. Run: git clone https://github.com/nijosmsft/wpr-mcp-server.git C:\tools\wpr-mcp-server
+4. Add this MCP server config to .mcp.json:
    {"mcpServers":{"wpr-trace-analyzer":{"type":"stdio","command":"uv","args":["run","--directory","C:\\tools\\wpr-mcp-server","python","-m","etw_analyzer.server"],"env":{"_NT_SYMBOL_PATH":"srv*C:\\symbols*https://msdl.microsoft.com/download/symbols"}}}}
-4. Verify: run "uv run --directory C:\tools\wpr-mcp-server python -m etw_analyzer.server" and confirm it starts
-Note: Windows only. Requires Windows Performance Toolkit (winget install Microsoft.WindowsSDK) for xperf.exe.
+5. Verify: run "uv run --directory C:\tools\wpr-mcp-server python -m etw_analyzer.server" and confirm it starts
 ```
 
 ## Development
