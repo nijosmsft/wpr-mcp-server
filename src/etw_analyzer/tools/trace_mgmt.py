@@ -114,20 +114,17 @@ def load_trace(
         summary = _format_load_summary(trace)
         return summary.replace("**Trace loaded:**", "**Trace loaded (from cache):**")
 
-    # Build symcache if needed — skip if symcache directory already has entries
-    symcache_dir = Path(os.environ.get("_NT_SYMCACHE_PATH", r"C:\SymCache"))
-    symcache_populated = symcache_dir.exists() and any(symcache_dir.iterdir()) if symcache_dir.exists() else False
-    if not symcache_populated:
-        from etw_analyzer.parsing.wpa_exporter import _run_xperf
-        try:
-            _run_xperf(
-                path, "symcache", ["-build"],
-                symbol_path=sym_path,
-                symbols=True,
-                timeout_seconds=timeout_seconds,
-            )
-        except Exception:
-            pass  # Non-fatal — continue with whatever symbols are available
+    # Build symcache — idempotent, fast when symbols already cached
+    from etw_analyzer.parsing.wpa_exporter import _run_xperf
+    try:
+        _run_xperf(
+            path, "symcache", ["-build"],
+            symbol_path=sym_path,
+            symbols=True,
+            timeout_seconds=timeout_seconds,
+        )
+    except Exception:
+        pass  # Non-fatal — continue with whatever symbols are available
 
     # Run exports (parallel xperf actions, saves parquet + raw text)
     results: dict[str, pd.DataFrame] = {}
