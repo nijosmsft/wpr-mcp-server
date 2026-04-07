@@ -901,7 +901,7 @@ def export_all_profiles(
     ]
 
     results: dict[str, Path] = {}
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=len(export_fns)) as executor:
         futures = {
             executor.submit(fn, etl_path, output_dir, symbol_path, timeout_seconds): fn.__name__
             for fn in export_fns
