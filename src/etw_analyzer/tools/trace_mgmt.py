@@ -110,6 +110,7 @@ def load_trace(
         )
         _populate_metadata(trace)
         set_trace(trace)
+        _start_background_dumper(trace)
         summary = _format_load_summary(trace)
         return summary.replace("**Trace loaded:**", "**Trace loaded (from cache):**")
 
@@ -168,8 +169,55 @@ def load_trace(
 
     _populate_metadata(trace)
     set_trace(trace)
+    _start_background_dumper(trace)
 
     return _format_load_summary(trace)
+
+
+def _start_background_dumper(trace: TraceData) -> None:
+    """Start background extraction of per-CPU SampledProfile events.
+
+    If the parquet cache already exists, loads it immediately.
+    Otherwise, kicks off a background thread to run xperf -a dumper
+    and parse all SampledProfile events. The thread stores the result
+    in trace.dumper_df and signals trace._dumper_ready when done.
+    """
+    import threading
+
+    parquet_path = trace.export_dir / "sampled_profile.parquet"
+
+    # If parquet cache exists, load it directly (fast)
+    if parquet_path.exists():
+        try:
+            trace.dumper_df = pd.read_parquet(parquet_path)
+            trace._dumper_ready.set()
+            return
+        except Exception:
+            pass  # Fall through to background extraction
+
+    def _extract():
+        try:
+            from etw_analyzer.parsing.wpa_exporter import parse_sampled_profile_events
+            df = parse_sampled_profile_events(
+                etl_path=trace.etl_path,
+                symbol_path=trace.symbol_path,
+                cpu_filter=None,
+                start_time=None,
+                end_time=None,
+                timeout_seconds=300,
+            )
+            trace.dumper_df = df
+            if not df.empty:
+                trace.export_dir.mkdir(parents=True, exist_ok=True)
+                df.to_parquet(parquet_path, index=False)
+        except Exception as e:
+            trace._dumper_error = str(e)
+        finally:
+            trace._dumper_ready.set()
+
+    thread = threading.Thread(target=_extract, daemon=True, name="dumper-extract")
+    trace._dumper_future = thread
+    thread.start()
 
 
 def _load_file(file_path: Path) -> pd.DataFrame:

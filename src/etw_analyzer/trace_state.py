@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,14 +20,28 @@ class TraceData:
     # Parsed DataFrames keyed by profile name
     raw_csv: dict[str, pd.DataFrame] = field(default_factory=dict)
 
-    # Cached per-CPU sampling data (from xperf -a dumper, parsed once on first per-CPU query)
+    # Cached per-CPU sampling data (from xperf -a dumper)
+    # Populated lazily by background thread after load_trace, or on first per-CPU query.
     dumper_df: pd.DataFrame | None = None
+
+    # Background extraction state
+    _dumper_future: threading.Thread | None = field(default=None, repr=False)
+    _dumper_ready: threading.Event = field(default_factory=threading.Event, repr=False)
+    _dumper_error: str | None = field(default=None, repr=False)
 
     # Metadata
     duration_seconds: float | None = None
     cpu_count: int | None = None
     event_counts: dict[str, int] = field(default_factory=dict)
     export_errors: list[str] = field(default_factory=list)
+
+    def wait_for_dumper(self) -> pd.DataFrame | None:
+        """Block until the background dumper extraction completes, then return the DataFrame."""
+        if self.dumper_df is not None:
+            return self.dumper_df
+        if self._dumper_future is not None:
+            self._dumper_ready.wait()  # Block until background thread signals
+        return self.dumper_df
 
     @property
     def cpu_sampling(self) -> pd.DataFrame | None:

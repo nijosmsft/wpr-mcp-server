@@ -69,41 +69,40 @@ def _get_per_cpu_sampling_df(
 ) -> pd.DataFrame:
     """Get per-CPU sampling data from cached dumper output.
 
-    On first call, runs xperf -a dumper to parse ALL SampledProfile events
-    (all CPUs) and caches the result. Subsequent calls filter in-memory.
-    Also persists the cache as parquet for fast reload across sessions.
+    The background dumper extraction starts automatically after load_trace.
+    This function waits for it to complete (if still running), then filters
+    in-memory. If background extraction hasn't started, falls back to
+    synchronous extraction.
     """
     trace = require_trace()
 
-    # Load or populate the dumper cache
-    if trace.dumper_df is None:
-        # Try loading from persisted parquet first
-        parquet_path = trace.export_dir / "sampled_profile.parquet"
-        if parquet_path.exists():
-            trace.dumper_df = pd.read_parquet(parquet_path)
-        else:
-            # Parse all events (no CPU filter) and cache
-            from etw_analyzer.parsing.wpa_exporter import parse_sampled_profile_events
+    # Wait for background extraction (started by load_trace)
+    # If already done or parquet was loaded, this returns immediately.
+    dumper_df = trace.wait_for_dumper()
 
-            trace.dumper_df = parse_sampled_profile_events(
-                etl_path=trace.etl_path,
-                symbol_path=trace.symbol_path,
-                cpu_filter=None,  # Parse ALL CPUs
-                start_time=None,
-                end_time=None,
-                timeout_seconds=300,
-            )
+    # Fallback: if background extraction didn't run (e.g. old trace state)
+    if dumper_df is None:
+        from etw_analyzer.parsing.wpa_exporter import parse_sampled_profile_events
 
-            # Persist for future sessions
-            if not trace.dumper_df.empty:
-                trace.export_dir.mkdir(parents=True, exist_ok=True)
-                trace.dumper_df.to_parquet(parquet_path, index=False)
+        trace.dumper_df = parse_sampled_profile_events(
+            etl_path=trace.etl_path,
+            symbol_path=trace.symbol_path,
+            cpu_filter=None,
+            start_time=None,
+            end_time=None,
+            timeout_seconds=300,
+        )
+        dumper_df = trace.dumper_df
 
-    if trace.dumper_df.empty:
+        if not dumper_df.empty:
+            trace.export_dir.mkdir(parents=True, exist_ok=True)
+            dumper_df.to_parquet(trace.export_dir / "sampled_profile.parquet", index=False)
+
+    if dumper_df is None or dumper_df.empty:
         return pd.DataFrame()
 
     # Filter in-memory by CPU and time range
-    df = trace.dumper_df
+    df = dumper_df
     cpu_list = parse_cpu_filter(cpu_filter)
     if cpu_list:
         df = df[df["CPU"].isin(cpu_list)]
